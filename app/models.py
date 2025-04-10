@@ -36,4 +36,5 @@ class Application(db.Model):
     cv_score = db.Column(db.Float, nullable=False)
     ga_result = db.Column(db.Float, nullable=False)
     ahp_result = db.Column(db.Float, nullable=False)
+    genome = db.Column(db.PickleType, nullable=True)  # On stocke un tableau de float ici
     created_at = db.Column(db.DateTime, default=datetime.now(timezone.utc))

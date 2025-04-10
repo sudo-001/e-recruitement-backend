@@ -1,10 +1,19 @@
+import os
 from flask import Blueprint, request, jsonify
 from .models import db, Employer, JobSeeker, JobOffer, Application
 from flask_jwt_extended import create_access_token, jwt_required, get_jwt_identity
 from werkzeug.security import generate_password_hash, check_password_hash
 from datetime import timedelta
+from werkzeug.utils import secure_filename
 
 main = Blueprint('main', __name__)
+
+UPLOAD_FOLDER = 'uploads'
+ALLOWED_EXTENSIONS = {'pdf', 'doc', 'docx'}
+
+def allowed_file(filename):
+    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+
 
 @main.route('/register/employer', methods=['POST'])
 def register_employer():
@@ -97,20 +106,53 @@ def get_job_offer(job_offer_id):
 @main.route('/apply', methods=['POST'])
 @jwt_required()
 def apply_for_job():
-    data = request.get_json()
-    job_seeker_id = get_jwt_identity()
-    job_offer = JobOffer.query.get(data['job_offer_id'])
+    user_identity = get_jwt_identity()
+    job_seeker_id = user_identity["id"]
+
+    if 'job_offer_id' not in request.form or 'cv' not in request.files:
+        return jsonify({"message": "Missing job_offer_id or CV file"}), 400
+
+    job_offer_id = int(request.form['job_offer_id'])
+    cv_file = request.files['cv']
+
+    if not allowed_file(cv_file.filename):
+        return jsonify({"message": "Invalid file type"}), 400
+
+    job_offer = JobOffer.query.get(job_offer_id)
     if not job_offer:
         return jsonify({"message": "Job offer not found"}), 404
 
-    # Here you would call Gemini to extract CV scores
-    cv_score = 0  # Placeholder for actual CV score
-    ga_result = 0  # Placeholder for GA result
-    ahp_result = 0  # Placeholder for AHP result
+    existing = Application.query.filter_by(job_seeker_id=job_seeker_id, job_offer_id=job_offer_id).first()
+    if existing:
+        return jsonify({"message": "Already applied to this job offer"}), 409
 
-    new_application = Application(job_seeker_id=job_seeker_id, job_offer_id=data['job_offer_id'], cv_score=cv_score, ga_result=ga_result, ahp_result=ahp_result)
+    # Sauvegarde du CV
+    filename = secure_filename(f"user_{job_seeker_id}_job_{job_offer_id}_" + cv_file.filename)
+    file_path = os.path.join(UPLOAD_FOLDER, filename)
+    os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+    cv_file.save(file_path)
+
+    # Appel de ta fonction
+    genome = generate_genome(cv_path=file_path, criteria=job_offer.criteria)
+
+    # Placeholder pour les autres scores
+    cv_score = 0
+    ga_result = 0
+    ahp_result = 0
+
+    # Création de l'application
+    new_application = Application(
+        job_seeker_id=job_seeker_id,
+        job_offer_id=job_offer_id,
+        cv_score=cv_score,
+        ga_result=ga_result,
+        ahp_result=ahp_result,
+        genome=genome
+    )
+
     db.session.add(new_application)
     db.session.commit()
+
     return jsonify({"message": "Application submitted successfully"}), 201
 
 @main.route('/analyze/<int:job_offer_id>', methods=['POST'])
