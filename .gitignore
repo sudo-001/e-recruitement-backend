@@ -1,0 +1,33 @@
+# Python bytecode files
+*.pyc
+*.pyo
+__pycache__/
+
+# Environment variables
+.env
+*.env
+
+# Virtual environment
+venv/
+ENV/
+env/
+
+# Flask instance folder
+instance/
+
+# Flask cache files
+*.log
+*.pot
+*.py[cod]
+*.sqlite3
+
+# Pytest cache
+.pytest_cache/
+
+# IDE specific files
+.vscode/
+.idea/
+
+# OS generated files
+.DS_Store
+Thumbs.db
