@@ -33,7 +33,7 @@ def login():
         # Créez un jeton avec une durée de validité de 1 heure
         user_type = 'employer' if isinstance(user, Employer) else 'job_seeker'
         access_token = create_access_token(identity={"id": user.id, "type": user_type}, expires_delta=timedelta(hours=24))
-        return jsonify(access_token=access_token, user_type=user_type), 200
+        return jsonify(access_token=access_token), 200
     return jsonify({"message": "Invalid credentials"}), 401
 
 
@@ -53,12 +53,12 @@ def create_job_offer():
         if not criterion_name or not isinstance(weight, (int, float)) or not (0 <= weight <= 1):
             return jsonify({"message": "Each criterion must have a name and a weight between 0 and 1"}), 400
 
-    employer_id = get_jwt_identity()
+    employer_identity = get_jwt_identity()
     new_job_offer = JobOffer(
         title=data['title'],
         description=data['description'],
         criteria=criteria,
-        employer_id=employer_id
+        employer_id=employer_identity['id']
     )
     db.session.add(new_job_offer)
     db.session.commit()
