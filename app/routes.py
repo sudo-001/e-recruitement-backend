@@ -1,5 +1,8 @@
 import os
 from flask import Blueprint, request, jsonify
+import numpy as np
+
+from app.utils import generate_genome, run_ahp, run_genetic_algorithm
 from .models import db, Employer, JobSeeker, JobOffer, Application
 from flask_jwt_extended import create_access_token, jwt_required, get_jwt_identity
 from werkzeug.security import generate_password_hash, check_password_hash
@@ -32,6 +35,64 @@ def register_job_seeker():
     db.session.add(new_job_seeker)
     db.session.commit()
     return jsonify({"message": "Job seeker registered successfully"}), 201
+
+
+@main.route('/applications', methods=['GET'])
+@jwt_required()
+def get_applications():
+    user_identity = get_jwt_identity()
+    job_seeker_id = user_identity["id"]
+
+    applications = Application.query.filter_by(job_seeker_id=job_seeker_id).all()
+    if not applications:
+        return jsonify({"message": "No applications found"}), 404
+
+    result = [
+        {
+            "id": app.id,
+            "job_offer_id": app.job_offer_id,
+            "cv_score": app.cv_score,
+            "ga_result": app.ga_result,
+            "ahp_result": app.ahp_result
+        }
+        for app in applications
+    ]
+    return jsonify(result), 200
+
+
+@main.route('/user/<int:user_id>', methods=['GET'])
+@jwt_required()
+def get_user(user_id):
+    user = Employer.query.get(user_id) or JobSeeker.query.get(user_id)
+    if not user:
+        return jsonify({"message": "User not found"}), 404
+
+    user_info = {
+        "id": user.id,
+        "username": user.username,
+        "type": "employer" if isinstance(user, Employer) else "job_seeker",
+    }
+
+    return jsonify(user_info), 200
+
+
+@main.route('/job_offers/<int:job_offer_id>', methods=['DELETE'])
+@jwt_required()
+def delete_job_offer(job_offer_id):
+    employer_identity = get_jwt_identity()
+    job_offer = JobOffer.query.get(job_offer_id)
+
+    if not job_offer:
+        return jsonify({"message": "Job offer not found"}), 404
+
+    if job_offer.employer_id != employer_identity["id"]:
+        return jsonify({"message": "Unauthorized to delete this job offer"}), 403
+
+    db.session.delete(job_offer)
+    db.session.commit()
+    return jsonify({"message": "Job offer deleted successfully"}), 200
+
+
 
 
 @main.route('/login', methods=['POST'])
@@ -133,7 +194,7 @@ def apply_for_job():
     cv_file.save(file_path)
 
     # Appel de ta fonction
-    genome = generate_genome(cv_path=file_path, criteria=job_offer.criteria)
+    genome = generate_genome(cv_path=file_path, criteria_dict=job_offer.criteria)
 
     # Placeholder pour les autres scores
     cv_score = 0
@@ -155,32 +216,136 @@ def apply_for_job():
 
     return jsonify({"message": "Application submitted successfully"}), 201
 
-@main.route('/analyze/<int:job_offer_id>', methods=['POST'])
-@jwt_required()
-def analyze_applications(job_offer_id):
-    employer_id = get_jwt_identity()
-    job_offer = JobOffer.query.get(job_offer_id)
 
-    if not job_offer or job_offer.employer_id != employer_id:
-        return jsonify({"message": "Job offer not found or unauthorized access"}), 404
+######################################### THIRT VERSION PERFECTLY WORKING #########################################
+@main.route('/analyze/<int:job_offer_id>', methods=['POST'])
+@token_required
+def analyze_job_offer(current_user, job_offer_id):
+    job = JobOffer.query.get(job_offer_id)
+    if not job:
+        return jsonify({'message': 'Job offer not found'}), 404
 
     applications = Application.query.filter_by(job_offer_id=job_offer_id).all()
+    if not applications:
+        return jsonify({'message': 'No applications for this job offer'}), 404
 
-    # Extract CV scores using Gemini
-    for application in applications:
-        cv_content = get_cv_content(application.id)  # Implement this function
-        cv_scores = extract_cv_scores(cv_content)
+    # Récupération des critères et poids depuis l'offre d'emploi
+    criteria = job.criteria
+    if not criteria:
+        return jsonify({'message': 'No criteria defined for this job offer'}), 400
 
-        # Run GA with the extracted scores
-        ga_result = run_ga(job_offer.criteria, cv_scores)
+    # Création de la population et du mapping genome -> application
+    genome_to_application = {}
+    population = []
 
-        # Run AHP with GA results
-        ahp_result = run_ahp(ga_result)
+    for app in applications:
+        genome = app.genome.get(str(job_offer_id)) if isinstance(app.genome, dict) else None
+        if genome:
+            population.append(genome)
+            genome_to_application[tuple(genome)] = app
 
-        # Update application with results
-        application.cv_score = cv_scores
-        application.ga_result = ga_result
-        application.ahp_result = ahp_result
+    if not population:
+        return jsonify({'message': 'No genomes available for applicants'}), 400
 
-    db.session.commit()
-    return jsonify({"message": "Analysis completed successfully"}), 200
+    # Lancer l'algorithme génétique
+    skills = list(criteria.keys())
+    weights = np.array(list(criteria.values()))
+    finalists, _ = run_genetic_algorithm(skills, weights, population)
+
+    # Appliquer AHP sur les finalistes
+    final_scores = run_ahp(finalists, skills, weights)
+
+    # Construire la réponse avec informations utilisateurs
+    response = {
+        "job_offer_id": job_offer_id,
+        "finalists_with_ahp": []
+    }
+
+    for i, candidate in enumerate(finalists):
+        app_obj = genome_to_application.get(tuple(candidate))
+        user = app_obj.user if app_obj else None
+
+        response["finalists_with_ahp"].append({
+            "candidate": candidate,
+            "ahp_score": round(final_scores[f"C{i+1}"], 4),
+            "user": {
+                "id": user.id if user else None,
+                "firstname": user.firstname if user else "",
+                "lastname": user.lastname if user else "",
+                "email": user.email if user else ""
+            }
+        })
+
+    return jsonify(response), 200
+
+
+######################################### FIRST VERSION WORKING #########################################
+# @main.route('/analyze/<int:job_offer_id>', methods=['POST'])
+# @jwt_required()
+# def analyze_applications(job_offer_id):
+#     employer_id = get_jwt_identity()
+#     job_offer = JobOffer.query.get(job_offer_id)
+
+#     if not job_offer or job_offer.employer_id != employer_id:
+#         return jsonify({"message": "Job offer not found or unauthorized access"}), 404
+
+#     applications = Application.query.filter_by(job_offer_id=job_offer_id).all()
+
+#     # Extract CV scores using Gemini
+#     for application in applications:
+#         cv_content = get_cv_content(application.id)  # Implement this function
+#         cv_scores = extract_cv_scores(cv_content)
+
+#         # Run GA with the extracted scores
+#         ga_result = run_ga(job_offer.criteria, cv_scores)
+
+#         # Run AHP with GA results
+#         ahp_result = run_ahp(ga_result)
+
+#         # Update application with results
+#         application.cv_score = cv_scores
+#         application.ga_result = ga_result
+#         application.ahp_result = ahp_result
+
+#     db.session.commit()
+#     return jsonify({"message": "Analysis completed successfully"}), 200
+
+
+######################################### SECOND VERSION WORKING #########################################
+# @main.route('/analyze/<int:job_offer_id>', methods=['POST'])
+# def analyze_candidates(job_offer_id):
+#     # 1. Récupérer l'offre d'emploi
+#     job_offer = JobOffer.query.get(job_offer_id)
+#     if not job_offer:
+#         return jsonify({"error": "Job offer not found"}), 404
+
+#     # 2. Extraire les critères
+#     criteria = job_offer.criteria
+#     if not criteria:
+#         return jsonify({"error": "No criteria found for this job"}), 400
+
+#     skills = list(criteria.keys())
+#     weights = np.array(list(criteria.values()))
+
+#     # 3. Récupérer les candidats ayant postulé avec leur genome
+#     applications = Application.query.filter_by(job_offer_id=job_offer_id).all()
+#     population = []
+#     for app in applications:
+#         genome = app.genome.get(str(job_offer_id)) if isinstance(app.genome, dict) else None
+#         if genome:
+#             population.append(genome)
+
+#     if not population:
+#         return jsonify({"error": "No valid genome found for applicants"}), 400
+
+#     # 4. Appeler GA
+#     finalists = run_genetic_algorithm(population, skills, weights)
+
+#     # 5. Appeler AHP
+#     ahp_result = run_ahp(finalists, skills, weights)
+
+#     # 6. Retourner les finalistes avec leur score AHP
+#     return jsonify({
+#         "job_offer_id": job_offer_id,
+#         "finalists_with_ahp": ahp_result
+#     }), 200
