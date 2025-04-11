@@ -137,10 +137,10 @@ def extract_resume_information(resume_text):
         return None
 
 
-resume_text = extract_text_from_pdf("./Carick-Appolinaire-ATEZONG-YMELE-FlowCV-Resume-20250215.pdf")
-if resume_text:
-    extracted_data = extract_resume_information(resume_text)
-    print(extracted_data)
-else:
-    print("No text extracted from the PDF.")
+# resume_text = extract_text_from_pdf("./Carick-Appolinaire-ATEZONG-YMELE-FlowCV-Resume-20250215.pdf")
+# if resume_text:
+#     extracted_data = extract_resume_information(resume_text)
+#     print(extracted_data)
+# else:
+#     print("No text extracted from the PDF.")
 # Test the function with a sample PDF file

@@ -7,4 +7,4 @@ psycopg2-binary
 requests
 Flask-Login
 ahpy
-flask-restplus
+flasgger
