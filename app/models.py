@@ -1,3 +1,4 @@
+from sqlalchemy.dialects.postgresql import JSON
 from . import db
 from flask_sqlalchemy import SQLAlchemy
 from datetime import datetime, timezone
@@ -35,5 +36,6 @@ class Application(db.Model):
     cv_score = db.Column(db.Float, nullable=False)
     ga_result = db.Column(db.Float, nullable=False)
     ahp_result = db.Column(db.Float, nullable=False)
-    genome = db.Column(db.PickleType, nullable=True)  # On stocke un tableau de float ici
+    genome = db.Column(JSON, nullable=True)  # <- Utilisation de JSON ici
     created_at = db.Column(db.DateTime, default=datetime.now(timezone.utc))
+
