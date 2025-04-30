@@ -8,3 +8,6 @@ requests
 Flask-Login
 ahpy
 flasgger
+pytest
+pytest-flask
+flask-testing

@@ -257,8 +257,6 @@ def get_all_job_offers():
         if not job_offer:
             return jsonify({"message": "Job offer not found"}), 404
 
-        # if job_offer.employer_id != employer_identity["id"]:
-        #     return jsonify({"message": "Unauthorized access to this job offer"}), 403
 
         # Récupérer toutes les candidatures pour cette offre
         applications = Application.query.filter_by(job_offer_id=job_offer_id).all()
@@ -294,8 +292,6 @@ def get_job_offer(job_offer_id):
         if not job_offer:
             return jsonify({"message": "Job offer not found"}), 404
 
-        # if job_offer.employer_id != employer_identity["id"]:
-        #     return jsonify({"message": "Unauthorized access to this job offer"}), 403
 
         # Récupérer toutes les candidatures pour cette offre
         applications = Application.query.filter_by(job_offer_id=job_offer_id).all()
@@ -503,8 +499,6 @@ def get_number_application_for_job(job_offer_id):
     if not job_offer:
         return jsonify({"message": "Job offer not found"}), 404
 
-    # if job_offer.employer_id != employer_identity["id"]:
-    #     return jsonify({"message": "Unauthorized access to this job offer"}), 403
 
     # Récupérer toutes les candidatures pour cette offre
     applications = Application.query.filter_by(job_offer_id=job_offer_id).all()
